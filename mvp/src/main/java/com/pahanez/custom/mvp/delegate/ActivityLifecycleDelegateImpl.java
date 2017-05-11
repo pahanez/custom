@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.util.Log;
 
 import com.pahanez.custom.common.util.BuildConfig;
 import com.pahanez.custom.common.util.L;
@@ -55,7 +56,54 @@ class ActivityLifecycleDelegateImpl <V extends BaseView, P extends BasePresenter
 
     @Override
     public void onStart() {
+        boolean viewStateWillBeRestored = false;
+        if (mStoredViewId == null) {
+            // No presenter available,
+            // Activity is starting for the first time (or keepPresenterInstance == false)
+            mPresenter = createViewIdAndCreatePresenter();
+            if (DEBUG) {
+                L.d(TAG, "new Presenter instance created: "
+                        + mPresenter
+                        + " for "
+                        + mDelegateCallback.provideView());
+            }
+        } else {
+            presenter = PresenterManager.getPresenter(activity, mosbyViewId);
+            if (mPresenter == null) {
+                // Process death,
+                // hence no presenter with the given viewState id stored, although we have a viewState id
+                mPresenter = createViewIdAndCreatePresenter();
+                if (DEBUG) {
+                    L.d(TAG,
+                            "No Presenter instance found in cache, although Strored View ID present. This was caused by process death, therefore new Presenter instance created: "
+                                    + mPresenter);
+                }
+            } else {
+                viewStateWillBeRestored = true;
+                if (DEBUG) {
+                    L.d(TAG, "Presenter instance reused from internal cache: " + mPresenter);
+                }
+            }
+        }
 
+        // presenter is ready, so attach viewState
+        V view = mDelegateCallback.provideView();
+        Objects.requireNonNull(view, "view cannot be null");
+
+        /*if (viewStateWillBeRestored) {
+            mDelegateCallback.setRestoringViewState(true); todo check
+        }*/
+
+        mPresenter.attachView(view);
+
+        /*if (viewStateWillBeRestored) {
+            delegateCallback.setRestoringViewState(false);
+        }*/
+
+        if (DEBUG) {
+            L.d(TAG,
+                    "View attached to Presenter. View: " + view + "   Presenter: " + mPresenter);
+        }
     }
 
     @Override
