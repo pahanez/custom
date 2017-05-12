@@ -4,14 +4,15 @@ import android.app.Activity;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
-import android.util.Log;
 
 import com.pahanez.custom.common.util.BuildConfig;
 import com.pahanez.custom.common.util.L;
 import com.pahanez.custom.mvp.BasePresenter;
 import com.pahanez.custom.mvp.BaseView;
+import com.pahanez.custom.mvp.delegate.presentermanager.PresenterManager;
 
 import java.util.Objects;
+import java.util.UUID;
 
 class ActivityLifecycleDelegateImpl <V extends BaseView, P extends BasePresenter<V, ?>> implements ActivityLifecycleDelegate<V, P> {
 
@@ -68,7 +69,7 @@ class ActivityLifecycleDelegateImpl <V extends BaseView, P extends BasePresenter
                         + mDelegateCallback.provideView());
             }
         } else {
-            presenter = PresenterManager.getPresenter(activity, mosbyViewId);
+            mPresenter = PresenterManager.getPresenter(mActivity, mStoredViewId);
             if (mPresenter == null) {
                 // Process death,
                 // hence no presenter with the given viewState id stored, although we have a viewState id
@@ -97,7 +98,7 @@ class ActivityLifecycleDelegateImpl <V extends BaseView, P extends BasePresenter
         mPresenter.attachView(view);
 
         /*if (viewStateWillBeRestored) {
-            delegateCallback.setRestoringViewState(false);
+            delegateCallback.setRestoringViewState(false); todo check
         }*/
 
         if (DEBUG) {
@@ -117,23 +118,44 @@ class ActivityLifecycleDelegateImpl <V extends BaseView, P extends BasePresenter
     }
 
     @Override
-    public void onResume() {
-
-    }
+    public void onResume() {}
 
     @Override
     public void onSaveInstanceState(@NonNull Bundle outState) {
-
+        if (mKeepPresenterInstance) {
+            outState.putString(KEY_VIEW_ID, mStoredViewId);
+            if (DEBUG) {
+                L.d(TAG, "Saving View ID into Bundle. ViewId: " + mStoredViewId);
+            }
+        }
     }
 
     @Override
-    public void onPause() {
-
-    }
+    public void onPause() {}
 
     @Override
     public void onStop() {
+        boolean retainPresenterInstance = retainPresenterInstance(mKeepPresenterInstance, mActivity);
+        mPresenter.detachView(retainPresenterInstance);
 
+        if (DEBUG) {
+            L.d(TAG, "detached VIEW from Presenter. VIEW: "
+                    + mDelegateCallback.provideView()
+                    + "   Presenter: "
+                    + mPresenter);
+        }
+
+        if (!retainPresenterInstance) {
+            if (mStoredViewId != null) { // mosbyViewId == null if keepPresenterInstance == false
+                PresenterManager.remove(mActivity, mStoredViewId);
+            }
+            L.d(TAG, "Destroying Presenter permanently " + mPresenter);
+        }
+    }
+
+    private boolean retainPresenterInstance(boolean keepPresenterInstance, Activity activity) {
+        return keepPresenterInstance && (activity.isChangingConfigurations()
+                || !activity.isFinishing());
     }
 
     @Override
@@ -149,5 +171,18 @@ class ActivityLifecycleDelegateImpl <V extends BaseView, P extends BasePresenter
     @Override
     public Object onRetainCustomNonConfigurationInstance() {
         return null;
+    }
+
+    private P createViewIdAndCreatePresenter() {
+
+        P presenter = mDelegateCallback.providePresenter();
+
+        Objects.requireNonNull(presenter, "activity should provide presenter");
+
+        if (mKeepPresenterInstance) {
+            mStoredViewId = UUID.randomUUID().toString();
+            PresenterManager.putPresenter(mActivity, mStoredViewId, presenter);
+        }
+        return presenter;
     }
 }
